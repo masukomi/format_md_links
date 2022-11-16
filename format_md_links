@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+# encoding=utf8
+"""
+format_md_links: a markdown formatting tool
+
+format_md_links is a CLI tool for formatting markdown that allows
+you to convert between the two styles of Markdown links, inline and
+referenced. The tool conforms to the Github Flavored Markdown spec.
+
+Original Author Seth Brown
+02-24-12
+original url: http://drbunsen.github.com/formd/
+appears to have been rewritten in JavaScript
+https://github.com/seth-brown/formd
+
+Last Python commit: https://github.com/seth-brown/formd/tree/3e08bc679dabe8ea402b373820c3c990ffee013f
+
+According to that commit this is MIT Licensed
+and Copyright 2012 Seth Brown
+
+converted to python3, and tweaked by masukomi
+https://masukomi.org
+"""
+from sys import stdin, stdout, argv
+import re
+from collections import OrderedDict
+
+class ForMarkdown(object):
+    """Format mardown text"""
+    def __init__(self, text):
+        super(ForMarkdown, self).__init__()
+        self.text = text
+        self.match_links = re.compile(r'(\[.*?\])\s?(\[.*?\]|\(.*?\))')
+        self.match_refs = re.compile(r'(?<=\n)\[.*?\]:\s?.*')
+        self.data = []
+
+    def _links(self):
+        """find Markdown links"""
+        links = re.findall(self.match_links, self.text)
+        for link in links:
+            yield link
+
+    def _refs(self):
+        """find Markdown references"""
+        refs = re.findall(self.match_refs, self.text)
+        refs.sort()
+        refs = OrderedDict(i.split(":", 1) for i in refs)
+        return refs
+
+    def _format(self):
+        """process text"""
+        links = (i for i in self._links())
+        refs = self._refs()
+        for n, link in enumerate(links):
+            text, ref = link
+            ref_num = ''.join(("[",str(n+1),"]: "))
+            if ref in list(refs.keys()):
+                url = refs.get(ref).strip()
+                for_md_ref = ''.join((ref_num, url))
+                for_md_text = ''.join((text, ref_num))
+                d = [for_md_text, for_md_ref]
+                self.data.append(d)
+            elif text in list(refs.keys()):
+                url = refs.get(text).strip()
+                for_md_ref = ''.join((ref_num, url))
+                for_md_text = ''.join((text, ref_num))
+                d = [for_md_text, for_md_ref]
+                self.data.append(d)
+            elif ref not in list(refs.keys()):
+                parse_ref = ref.strip("()")
+                for_md_ref = ''.join((ref_num, parse_ref))
+                for_md_text = ''.join((text,ref_num))
+                d = [for_md_text, for_md_ref]
+                self.data.append(d)
+
+    def convert_md(self, inline=False):
+        """ created referenced or inline markdown """
+        self._format()
+        if inline is True:
+            text_link = iter([''.join((_[0].split("][",1)[0], "](", _[1].split(":",1)[1].strip().split()[0], ")")) for _ in self.data])
+            for_md_text = self.match_links.sub(lambda _: next(text_link), md)
+            for_md_md = self.match_refs.sub('', for_md_text).strip()
+        else:
+            ref_nums = iter([_[0].rstrip(" :") for _ in self.data])
+            for_md_text = self.match_links.sub(lambda _: next(ref_nums), md)
+            for_md_refs = self.match_refs.sub('', for_md_text).strip()
+            references = [i[1] for i in self.data]
+            for_md_md = '\n'.join((for_md_refs, '\n', '\n'.join(i for i in references)))
+        yield for_md_md
+
+
+if __name__ == '__main__':
+    if len(argv) < 3 or argv[1] == '-h':
+        stdout.write("""USAGE: for_md [-i|-r|-h] <path/to/markdown/file>
+               -i use inline style links
+               -r use relative style links
+               -h print this usage""")
+        exit(0)
+
+    md_file = open(argv[2], encoding="utf-8")
+    md = md_file.read()
+    md_file.close()
+    text = ForMarkdown(md)
+    if argv[1] == '-r':
+        for_md_text = text.convert_md()
+        for t in for_md_text:
+            stdout.write(t)
+    elif argv[1] == '-i':
+        for_md_text = text.convert_md(inline=True)
+        for t in for_md_text:
+            stdout.write(t)
